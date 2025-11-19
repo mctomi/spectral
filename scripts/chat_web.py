@@ -51,19 +51,19 @@ from nanochat.engine import Engine
 
 # Abuse prevention limits
 MAX_MESSAGES_PER_REQUEST = 500
-MAX_MESSAGE_LENGTH = 8000
-MAX_TOTAL_CONVERSATION_LENGTH = 32000
+MAX_MESSAGE_LENGTH = 16000
+MAX_TOTAL_CONVERSATION_LENGTH = 64000
 MIN_TEMPERATURE = 0.0
 MAX_TEMPERATURE = 2.0
 MIN_TOP_K = 1
 MAX_TOP_K = 200
 MIN_MAX_TOKENS = 1
-MAX_MAX_TOKENS = 4096
+MAX_MAX_TOKENS = 32000
 
 parser = argparse.ArgumentParser(description='NanoChat Web Server')
 parser.add_argument('-n', '--num-gpus', type=int, default=1, help='Number of GPUs to use (default: 1)')
 parser.add_argument('-i', '--source', type=str, default="sft", help="Source of the model: sft|mid|rl")
-parser.add_argument('-t', '--temperature', type=float, default=0.8, help='Default temperature for generation')
+parser.add_argument('-t', '--temperature', type=float, default=1, help='Default temperature for generation')
 parser.add_argument('-k', '--top-k', type=int, default=50, help='Default top-k sampling parameter')
 parser.add_argument('-m', '--max-tokens', type=int, default=512, help='Default max tokens for generation')
 parser.add_argument('-g', '--model-tag', type=str, default=None, help='Model tag to load')
@@ -243,7 +243,7 @@ app.add_middleware(
 async def root():
     """Serve the chat UI."""
     ui_html_path = os.path.join("nanochat", "ui.html")
-    with open(ui_html_path, "r", encoding="utf-8") as f:
+    with open(ui_html_path, "r") as f:
         html_content = f.read()
     # Replace the API_URL to use the same origin
     html_content = html_content.replace(
