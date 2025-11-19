@@ -1,53 +1,78 @@
-# Spectral Mixer — A New O(T log T) Attention-Free Architecture
+# Spectral Mixer — Attention-Free O(T log T) Architecture
 
-**Spectral** is a new sequence-mixing architecture built around logarithmic-depth hierarchical rotations.  
-It offers global token interaction in **O(T log T)** time using only elementwise operations, enabling efficient long-context language modeling without attention.
-
-Unlike conventional mechanisms, Spectral introduces a structured mixing process based on **binary‑dilated shifts** and **learned per‑head phase rotations**, providing a simple yet expressive alternative to attention for autoregressive models.
+Spectral is a new sequence-mixing architecture that replaces attention with a lightweight, logarithmic-depth rotational mixer.  
+It enables efficient long-context modeling while keeping implementation simple and fully compatible with standard autoregressive LLM blocks.
 
 ---
 
-## Method
+## Key Features
 
-Tokens are projected into a low‑rank, multi‑head spectral space.  
-For each level \( l = 0 \dots \lceil \log_2 T
-ceil - 1 \), the sequence is shifted by \( 2^l \) positions and updated via a learned rotation:
+- **New attention-free architecture**
+- **O(T log T)** mixing depth  
+- **Linear memory usage**
+- **Global token interaction in log₂(T) steps**
+- **Binary‑dilated shifts:** 1, 2, 4, 8, ...
+- **Learned per-head phase rotations**
+- **Low-rank spectral space for efficiency**
+- **Pure PyTorch, no custom kernels**
+- **Drop-in replacement for Transformer attention**
 
-\[
-heta*t \leftarrow \cos(\phi*{l,t}) heta*t + \sin(\phi*{l,t}) heta\_{t - 2^l}.
-\]
+---
 
-Implementation line:
+## How It Works (Code-Oriented)
+
+### 1. Low-rank projection
 
 ```python
-theta = cos * theta + sin * theta_prev
+theta = freq_token(x)          # (B,T,rank)
+theta = theta.view(B,T,H,Dh)   # split into heads
 ```
 
-After all levels, states are merged and projected back to the model dimension.
+### 2. Per-level phase generation
+
+```python
+phi = freq_level(x)
+phi = phi.view(B,T,L,H,Dh)     # L = log2(T)
+```
+
+### 3. Binary-dilated mixing loop
+
+```python
+for l in range(L):
+    step = 1 << l              # 1,2,4,8,...
+    phi_l = phi[:,:,l]
+    theta = cos(phi_l)*theta + sin(phi_l)*theta_prev
+```
+
+`theta_prev` is the shifted sequence:
+
+```python
+theta_prev[:, step:] = theta[:, :-step]
+```
+
+### 4. Merge and project back
+
+```python
+theta = theta.view(B,T,rank)
+out   = out_proj(theta)
+```
 
 ---
 
-## Core Properties
+## Capabilities
 
-- **New architecture** based on hierarchical frequency‑modulated mixing
-- **Global reach in log₂(T) steps**
-- **No attention matrices or pairwise interactions**
-- **Linear memory usage**
-- **Efficient for long context windows**
-- **Independent per‑head oscillators**
-
----
-
-## Complexity
-
-- **Time:** O(T log T)
-- **Memory:** O(T)
+- Handles very long sequences without quadratic cost  
+- Simple mechanism with predictable behavior  
+- Provides hierarchical, multi-scale mixing  
+- Works with any embedding size or head layout  
+- Requires only standard PyTorch ops  
+- Effective drop-in module for experimentation
 
 ---
 
 ## Status
 
-An experimental architecture exploring attention‑free sequence modeling using rotational dynamics and logarithmic-depth propagation.
+Spectral is experimental and intended for research into alternative sequence-processing architectures.
 
 ---
 
