@@ -57,6 +57,8 @@ theta = theta.view(B, T, rank)
 out = out_proj(theta)
 ```
 
+[View Spectral implementation (line 42)](https://github.com/mctomi/spectral/blob/master/nanochat/gpt.py#L42)
+
 ---
 
 ## Capabilities
