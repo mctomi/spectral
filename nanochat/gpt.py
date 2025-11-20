@@ -23,7 +23,7 @@ from nanochat.common import get_dist_info, print0
 from nanochat.muon import Muon, DistMuon
 from nanochat.adamw import DistAdamW
 
-import torch.utils.checkpoint as cp
+from torch.utils.checkpoint import checkpoint
 
 @dataclass
 class GPTConfig:
@@ -35,7 +35,6 @@ class GPTConfig:
 
 
 def norm(x):
-    # Purely functional rmsnorm with no learnable params
     return F.rms_norm(x, (x.size(-1),))
 
 
@@ -46,48 +45,54 @@ class Spectral(nn.Module):
         self.layer_idx = layer_idx
         self.dim = config.n_embd
         self.num_heads = config.n_head
-        self.rank = self.dim // 4
-        self.head_dim = self.rank // self.num_heads
+        assert self.dim % self.num_heads == 0
+
+        self.head_dim = self.dim // self.num_heads
         self.max_lvls = (config.sequence_len - 1).bit_length()
 
-        self.freq_token = nn.Linear(self.dim, self.rank, bias=False)
-        self.freq_level = nn.Linear(self.dim, self.max_lvls * self.rank, bias=False)
-        self.out_proj = nn.Linear(self.rank, self.dim, bias=False)
-
-    def _mix(self, theta, phi, step):
-        B, T, H, D = theta.shape
+        self.freq_token = nn.Linear(self.dim, self.dim, bias=False)
+        self.freq_level = nn.Linear(self.dim, self.max_lvls * self.num_heads, bias=False)
+        self.out_proj = nn.Linear(self.dim, self.dim, bias=False)
         
+
+    def _mix(self, theta, phi_l, step):
+        B, T, H, Dh = theta.shape
+
         theta_prev = torch.zeros_like(theta)
         if step < T:
             theta_prev[:, step:] = theta[:, :-step]
 
-        cos = torch.cos(phi)
-        sin = torch.sin(phi)
+        cos = torch.cos(phi_l)
+        sin = torch.sin(phi_l)
 
-        return cos * theta + sin * theta_prev
+        out = cos * theta + sin * theta_prev
+        return out * (1 / math.sqrt(2.0))
+
+    def _loop(self, theta, phi):
+        B, T, H, Dh = theta.shape
+    
+        for l in range(self.max_lvls):
+            step = 1 << l
+            phi_l = phi[:, :, l].unsqueeze(-1) 
+            theta = self._mix(theta, phi_l, step)
+
+        return theta
 
     def forward(self, x):
         B, T, _ = x.shape
 
-        theta = self.freq_token(x)
+        theta = norm(self.freq_token(x))
         theta = theta.view(B, T, self.num_heads, self.head_dim)
 
         phi = self.freq_level(x)
-        phi = phi.view(B, T, self.max_lvls, self.num_heads, self.head_dim)
+        phi = phi.view(B, T, self.max_lvls, self.num_heads)
 
-        L = self.max_lvls
+        theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
 
-        for l in range(L):
-            step = 1 << l
-            phi_l = phi[:, :, l, :, :]
-            theta = torch.utils.checkpoint.checkpoint(
-                lambda th, ph: self._mix(th, ph, step),
-                theta, phi_l,
-                use_reentrant=False
-            )
+        theta = theta.view(B, T, self.dim)
+        y = self.out_proj(theta)
 
-        theta = theta.view(B, T, self.rank)
-        return self.out_proj(theta)
+        return y
 
 
 
