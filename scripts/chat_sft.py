@@ -44,7 +44,7 @@ device_batch_size = 1 # max to avoid OOM
 # optimization
 num_epochs = 1
 num_iterations = -1 # override number of iterations (-1 = disable, use num_epochs to derive it)
-target_examples_per_step = 16
+target_examples_per_step = 32
 unembedding_lr = 0.004
 embedding_lr = 0.2
 matrix_lr = 0.02
