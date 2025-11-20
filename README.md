@@ -21,43 +21,79 @@ It supports efficient long‑context processing while maintaining a clean, PyTor
 
 ## How It Works
 
-### 1. Low‑rank projection
+The **Spectral** layer mixes token representations in a binary-dilated way using per-token frequencies and per-level phases.
+
+### 1. Token frequency projection
+
+Each token is first projected into a per-head frequency space:
 
 ```python
-theta = freq_token(x)
-theta = theta.view(B, T, H, Dh)
+theta = norm(self.freq_token(x))  # x: (B, T, dim)
+theta = theta.view(B, T, self.num_heads, self.head_dim)
 ```
 
-### 2. Per‑level phase generation
+- `freq_token`: linear layer over the embedding dimension.
+- `norm(...)`: normalization before mixing.
+- Result is reshaped into `(batch, time, heads, head_dim)`.
+
+---
+
+### 2. Per-level phase generation
+
+We generate a phase value for each token, level, and head:
 
 ```python
-phi = freq_level(x)
-phi = phi.view(B, T, L, H, Dh)
+phi = self.freq_level(x)          # (B, T, max_lvls * num_heads)
+phi = phi.view(B, T, self.max_lvls, self.num_heads)
 ```
 
-### 3. Binary‑dilated mixing
+- `max_lvls` is based on the sequence length: `(sequence_len - 1).bit_length()`.
+- Each level corresponds to a different binary-dilated step.
+
+---
+
+### 3. Binary-dilated mixing
+
+For each level `l`, we mix the current state with a time-shifted version of itself:
 
 ```python
-for l in range(L):
-    step = 1 << l
-    phi_l = phi[:, :, l]
-    theta = cos(phi_l) * theta + sin(phi_l) * theta_prev
+def _mix(self, theta, phi_l, step):
+    # theta: (B, T, H, Dh)
+    # phi_l: (B, T, H, 1)
+
+    theta_prev = torch.zeros_like(theta)
+    if step < T:
+        theta_prev[:, step:] = theta[:, :-step]
+
+    cos = torch.cos(phi_l)
+    sin = torch.sin(phi_l)
+
+    out = cos * theta + sin * theta_prev
+    return out * (1 / math.sqrt(2.0))
 ```
 
-Shifted state:
+The loop over levels is checkpointed for memory efficiency:
 
 ```python
-theta_prev[:, step:] = theta[:, :-step]
+theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
 ```
+
+---
 
 ### 4. Final projection
 
+After all levels are applied, we project back to the model dimension:
+
 ```python
-theta = theta.view(B, T, rank)
-out = out_proj(theta)
+theta = theta.view(B, T, self.dim)
+y = self.out_proj(theta)          # (B, T, dim)
 ```
 
-[View Spectral implementation (line 42)](https://github.com/mctomi/spectral/blob/master/nanochat/gpt.py#L42)
+- `out_proj`: final linear layer over the embedding dimension.
+- `y` is the output of the Spectral layer.
+
+
+[View Spectral implementation (line 41)](https://github.com/mctomi/spectral/blob/master/nanochat/gpt.py#L41)
 
 ---
 
