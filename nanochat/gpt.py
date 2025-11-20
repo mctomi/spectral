@@ -81,11 +81,14 @@ class Spectral(nn.Module):
     def forward(self, x):
         B, T, _ = x.shape
 
-        theta = norm(self.freq_token(x))
+        theta = self.freq_token(x)
+        theta = norm(theta)
         theta = theta.view(B, T, self.num_heads, self.head_dim)
 
         phi = self.freq_level(x)
+        phi = norm(phi)
         phi = phi.view(B, T, self.max_lvls, self.num_heads)
+
 
         theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
 
