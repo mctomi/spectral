@@ -89,8 +89,8 @@ class Spectral(nn.Module):
         phi = norm(phi)
         phi = phi.view(B, T, self.max_lvls, self.num_heads)
 
-
-        theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
+        # checkpoint removido
+        theta = self._loop(theta, phi)
 
         theta = theta.view(B, T, self.dim)
         y = self.out_proj(theta)
