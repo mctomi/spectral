@@ -40,11 +40,11 @@ step = None # step to load the model from (base model or midtrained model)
 # compute/precision
 device_type = "" # cuda|cpu|mps (empty => autodetect)
 dtype = "bfloat16"
-device_batch_size = 2 # max to avoid OOM
+device_batch_size = 1 # max to avoid OOM
 # optimization
 num_epochs = 1
 num_iterations = -1 # override number of iterations (-1 = disable, use num_epochs to derive it)
-target_examples_per_step = 32
+target_examples_per_step = 16
 unembedding_lr = 0.004
 embedding_lr = 0.2
 matrix_lr = 0.02
