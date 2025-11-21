@@ -37,7 +37,7 @@ model_tag = None # model tag to load the model from (base model or midtrained mo
 step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
 num_iterations = -1 # explicit number of steps of the optimization (-1 = disable)
-max_seq_len = 16384
+max_seq_len = 4096
 device_batch_size = 16
 unembedding_lr = 0.004
 embedding_lr = 0.2
