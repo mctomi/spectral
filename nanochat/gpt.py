@@ -86,8 +86,12 @@ class Spectral(nn.Module):
         theta = theta.view(B, T, self.num_heads, self.head_dim)
 
         phi = self.freq_level(x)
-        phi = norm(phi)
         phi = phi.view(B, T, self.max_lvls, self.num_heads)
+        phi = torch.tanh(phi)
+
+        pos = torch.arange(T, device=x.device, dtype=x.dtype).log1p() / math.log1p(T)
+        pos = pos.view(1, T, 1, 1)
+        phi = phi * pos
 
         theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
 
