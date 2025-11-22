@@ -51,9 +51,14 @@ class Spectral(nn.Module):
         self.max_lvls = (config.sequence_len - 1).bit_length()
 
         self.freq_token = nn.Linear(self.dim, self.dim, bias=False)
-        self.freq_level = nn.Linear(self.dim, self.max_lvls * self.num_heads, bias=False)
+
+
+        self.freq_level = nn.ModuleList([
+            nn.Linear(self.head_dim, 1, bias=False)
+            for _ in range(self.max_lvls)
+        ])
+
         self.out_proj = nn.Linear(self.dim, self.dim, bias=False)
-        
 
     def _mix(self, theta, phi_l, step):
         B, T, H, Dh = theta.shape
@@ -68,12 +73,16 @@ class Spectral(nn.Module):
         out = cos * theta + sin * theta_prev
         return out * (1 / math.sqrt(2.0))
 
-    def _loop(self, theta, phi):
+
+    def _loop(self, theta):
         B, T, H, Dh = theta.shape
-    
+
         for l in range(self.max_lvls):
             step = 1 << l
-            phi_l = phi[:, :, l].unsqueeze(-1) 
+
+            phi_l = self.freq_level[l](theta)
+            phi_l = torch.clamp(phi_l, -4.0, 4.0)
+            
             theta = self._mix(theta, phi_l, step)
 
         return theta
@@ -85,20 +94,10 @@ class Spectral(nn.Module):
         theta = norm(theta)
         theta = theta.view(B, T, self.num_heads, self.head_dim)
 
-        phi = self.freq_level(x)
-        phi = phi.view(B, T, self.max_lvls, self.num_heads)
-        phi = torch.tanh(phi)
-
-        pos = torch.arange(T, device=x.device, dtype=x.dtype).log1p() / math.log1p(T)
-        pos = pos.view(1, T, 1, 1)
-        phi = phi * pos
-
-        theta = checkpoint(self._loop, theta, phi, use_reentrant=False)
+        theta = checkpoint(self._loop, theta, use_reentrant=False)
 
         theta = theta.view(B, T, self.dim)
-        y = self.out_proj(theta)
-
-        return y
+        return self.out_proj(theta)
 
 
 
